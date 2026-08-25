@@ -16,6 +16,7 @@ from ledger.models import (
 )
 from core.test_helpers import create_test_interactive_user
 
+
 class BalanceTriggerTest(TestCase):
 
     def setUp(self):
@@ -88,7 +89,6 @@ class BalanceTriggerTest(TestCase):
             "must be 0",
             str(ctx.exception)
         )
-
 
     def test_closed_period_rejected_at_db_level(self):
 

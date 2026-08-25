@@ -15,6 +15,7 @@ from ledger.models import Account
 from djmoney.money import Money
 from core.test_helpers import create_test_interactive_user
 
+
 class AnalyticAxisTest(TestCase):
 
     def test_code_unique(self):
@@ -153,6 +154,7 @@ class LegTagConstraintTest(TestCase):
         with self.assertRaises(ValidationError):
             duplicate.clean()
 
+
 class AccountingPeriodModelTest(TestCase):
 
     def setUp(self):
@@ -184,6 +186,7 @@ class AccountingPeriodModelTest(TestCase):
         period.save(username=self.test_user.username)
         self.assertTrue(period.is_closed)
 
+
 class LedgerJournalModelTest(TestCase):
 
     def setUp(self):
@@ -208,7 +211,6 @@ class LedgerJournalModelTest(TestCase):
             name="Expense Account2",
         )
 
-
     def test_str_returns_code_first(self):
         journal1 = LedgerJournal(
             code="PURCHASE",
@@ -229,6 +231,7 @@ class LedgerJournalModelTest(TestCase):
         )
         journal.save(username=self.test_user.username)
         self.assertEqual(str(journal), "Purchase Journal 2")
+
 
 class DeploymentConfigurationTest(TestCase):
 

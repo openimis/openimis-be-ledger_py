@@ -15,12 +15,15 @@ from ledger.models import (
     LegTag,
     AnalyticValue,
     AnalyticAxis,
-    DeploymentConfiguration
+    DeploymentConfiguration,
+    PartyLedgerBalance,
+    AccountBalanceSnapshot
 )
 from core.test_helpers import create_test_interactive_user
 from django.core.exceptions import ValidationError
 from hordak.models import Leg
 from decimal import Decimal
+
 
 class LedgerEntryServiceTests(TestCase):
 
@@ -90,14 +93,12 @@ class LedgerEntryServiceTests(TestCase):
         )
         self.journal.save(username=self.test_user.username)
 
-
         # Période ouverte
         self.open_period = AccountingPeriod(
             name="2026-01",
             status=AccountingPeriod.STATUS_OPEN,
         )
         self.open_period.save(username=self.test_user.username)
-
 
         # Période verrouillée
         self.locked_period = AccountingPeriod(
@@ -106,14 +107,12 @@ class LedgerEntryServiceTests(TestCase):
         )
         self.locked_period.save(username=self.test_user.username)
 
-
         # Période fermée
         self.closed_period = AccountingPeriod(
             name="2026-03",
             status=AccountingPeriod.STATUS_OPEN,
         )
         self.closed_period.save(username=self.test_user.username)
-
 
         # Legs équilibrés réutilisables
         self.valid_legs = [
@@ -146,8 +145,6 @@ class LedgerEntryServiceTests(TestCase):
 
         self.assertIsNotNone(result.pk)
 
-
-
     def test_locked_period_rejected(self):
 
         self.locked_period.status = (
@@ -155,7 +152,6 @@ class LedgerEntryServiceTests(TestCase):
         )
 
         self.locked_period.save(username=self.test_user.username)
-
 
         with self.assertRaises(
             ClosedPeriodException
@@ -170,8 +166,6 @@ class LedgerEntryServiceTests(TestCase):
                 user=self.test_user
             )
 
-
-
     def test_closed_period_rejected(self):
 
         self.closed_period.status = (
@@ -179,7 +173,6 @@ class LedgerEntryServiceTests(TestCase):
         )
 
         self.closed_period.save(username=self.test_user.username)
-
 
         with self.assertRaises(
             ClosedPeriodException
@@ -193,7 +186,6 @@ class LedgerEntryServiceTests(TestCase):
                 legs=self.valid_legs,
                 user=self.test_user
             )
-
 
     def test_missing_account_mapping(self):
 
@@ -245,7 +237,6 @@ class LedgerEntryServiceTests(TestCase):
             str(ctx.exception).lower(),
         )
 
-
     def test_tags_are_attached_to_legs(self):
         result = LedgerEntryService.post(
             journal=self.journal,
@@ -284,6 +275,7 @@ class LedgerEntryServiceTests(TestCase):
             ).count(),
             1,
         )
+
 
 class LedgerEntryServiceTest(TestCase):
 
@@ -348,3 +340,282 @@ class LedgerEntryServiceTest(TestCase):
                 ],
                 user=self.test_user,
             )
+
+
+class LedgerEntryServiceAdditionalTests(TestCase):
+
+    def setUp(self):
+        self.user = create_test_interactive_user()
+
+        self.cash_account = Account.objects.create(
+            code="8101",
+            full_code="8101",
+            name="Cash",
+        )
+
+        self.expense_account = Account.objects.create(
+            code="8102",
+            full_code="8102",
+            name="Expense",
+        )
+
+        self.sequence = Sequence(
+            code="GL-ADD",
+            name="General Ledger Additional",
+        )
+        self.sequence.save(username=self.user.username)
+
+        self.journal = LedgerJournal(
+            code="GENERAL-ADD",
+            name="General Additional",
+            sequence_id=self.sequence,
+            default_credit_account_id=self.cash_account,
+            default_debit_account_id=self.expense_account,
+        )
+        self.journal.save(username=self.user.username)
+
+        self.period = AccountingPeriod(
+            name="2026-10",
+            status=AccountingPeriod.STATUS_OPEN,
+        )
+        self.period.save(username=self.user.username)
+
+        self.party_axis = AnalyticAxis(
+            code=AnalyticAxis.PARTY,
+            name="Party",
+        )
+        self.party_axis.save(username=self.user.username)
+
+        self.party_value = AnalyticValue(
+            axis=self.party_axis,
+            party_type=AnalyticValue.PARTY_HEALTH_FACILITY,
+            external_reference="HF-TEST",
+            display_name="Test HF",
+        )
+        self.party_value.save(username=self.user.username)
+
+        self.funder_axis = AnalyticAxis(
+            code=AnalyticAxis.FUNDER,
+            name="Funder",
+        )
+        self.funder_axis.save(username=self.user.username)
+
+        self.funder_value = AnalyticValue(
+            axis=self.funder_axis,
+            party_type="insuree_family",
+            funder_code="FUNDER-001",
+            external_reference="FUNDER-001",
+            display_name="Test Funder",
+        )
+        self.funder_value.save(username=self.user.username)
+
+        cnfg = DeploymentConfiguration(
+            currency_code="EUR",
+            retained_earnings_account=self.cash_account,
+        )
+        cnfg.save(username=self.user.username)
+
+    def test_post_requires_user(self):
+        with self.assertRaises(ValidationError):
+            LedgerEntryService.post(
+                journal=self.journal,
+                accounting_period=self.period,
+                source_event_type="invoice",
+                source_event_reference="INV-USER",
+                legs=[
+                    {
+                        "account": self.cash_account,
+                        "amount": 100,
+                    },
+                    {
+                        "account": self.expense_account,
+                        "amount": -100,
+                    },
+                ],
+                user=None,
+            )
+
+    def test_post_requires_at_least_two_legs(self):
+        with self.assertRaises(ValidationError):
+            LedgerEntryService.post(
+                journal=self.journal,
+                accounting_period=self.period,
+                source_event_type="invoice",
+                source_event_reference="INV-ONE-LEG",
+                legs=[
+                    {
+                        "account": self.cash_account,
+                        "amount": 100,
+                    },
+                ],
+                user=self.user,
+            )
+
+    def test_invalid_leg_tag_index_rejected(self):
+        with self.assertRaises(ValidationError):
+            LedgerEntryService.post(
+                journal=self.journal,
+                accounting_period=self.period,
+                source_event_type="invoice",
+                source_event_reference="INV-BAD-TAG",
+                legs=[
+                    {
+                        "account": self.cash_account,
+                        "amount": 100,
+                    },
+                    {
+                        "account": self.expense_account,
+                        "amount": -100,
+                    },
+                ],
+                tags={
+                    10: [self.party_value],
+                },
+                user=self.user,
+            )
+
+    def test_post_updates_account_balance_snapshot(self):
+        LedgerEntryService.post(
+            journal=self.journal,
+            accounting_period=self.period,
+            source_event_type="invoice",
+            source_event_reference="INV-SNAPSHOT",
+            legs=[
+                {
+                    "account": self.cash_account,
+                    "amount": 100,
+                },
+                {
+                    "account": self.expense_account,
+                    "amount": -100,
+                },
+            ],
+            user=self.user,
+        )
+
+        cash_snapshot = AccountBalanceSnapshot.objects.get(
+            accounting_period=self.period,
+            account=self.cash_account,
+        )
+
+        expense_snapshot = AccountBalanceSnapshot.objects.get(
+            accounting_period=self.period,
+            account=self.expense_account,
+        )
+
+        self.assertEqual(
+            cash_snapshot.balance_amount,
+            Decimal("100"),
+        )
+
+        self.assertEqual(
+            expense_snapshot.balance_amount,
+            Decimal("100"),
+            # normalement -100 mais les valeurs sont
+            # passé par hordak en valeur absolu
+        )
+
+    def test_post_updates_party_balance(self):
+        LedgerEntryService.post(
+            journal=self.journal,
+            accounting_period=self.period,
+            source_event_type="invoice",
+            source_event_reference="INV-PARTY",
+            legs=[
+                {
+                    "account": self.cash_account,
+                    "amount": 100,
+                },
+                {
+                    "account": self.expense_account,
+                    "amount": -100,
+                },
+            ],
+            tags={
+                0: [self.party_value],
+            },
+            user=self.user,
+        )
+
+        balance = PartyLedgerBalance.objects.get(
+            accounting_period=self.period,
+            analytic_value=self.party_value,
+        )
+
+        self.assertEqual(
+            balance.debit_amount,
+            Decimal("100"),
+        )
+
+        self.assertEqual(
+            balance.credit_amount,
+            Decimal("0"),
+        )
+
+        self.assertEqual(
+            balance.balance_amount,
+            Decimal("100"),
+        )
+
+    def test_funder_tag_does_not_update_party_balance(self):
+        LedgerEntryService.post(
+            journal=self.journal,
+            accounting_period=self.period,
+            source_event_type="invoice",
+            source_event_reference="INV-FUNDER",
+            legs=[
+                {
+                    "account": self.cash_account,
+                    "amount": 100,
+                },
+                {
+                    "account": self.expense_account,
+                    "amount": -100,
+                },
+            ],
+            tags={
+                0: [self.funder_value],
+            },
+            user=self.user,
+        )
+
+        self.assertFalse(
+            PartyLedgerBalance.objects.filter(
+                accounting_period=self.period,
+                analytic_value=self.funder_value,
+            ).exists()
+        )
+
+    def test_post_creates_ledger_entry_meta(self):
+        result = LedgerEntryService.post(
+            journal=self.journal,
+            accounting_period=self.period,
+            source_event_type="invoice",
+            source_event_reference="INV-META",
+            legs=[
+                {
+                    "account": self.cash_account,
+                    "amount": 100,
+                },
+                {
+                    "account": self.expense_account,
+                    "amount": -100,
+                },
+            ],
+            user=self.user,
+        )
+
+        self.assertEqual(
+            result.accounting_period_id,
+            self.period.uuid,
+        )
+
+        self.assertEqual(
+            result.source_event_type,
+            "invoice",
+        )
+
+        self.assertEqual(
+            result.source_event_reference,
+            "INV-META",
+        )
