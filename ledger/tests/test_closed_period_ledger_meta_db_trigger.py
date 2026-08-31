@@ -1,8 +1,6 @@
 from django.db import DatabaseError
 from django.test import TestCase
-
 from hordak.models import Transaction
-
 from ledger.models import (
     Account,
     AccountingPeriod,
@@ -10,7 +8,6 @@ from ledger.models import (
     LedgerJournal,
     Sequence,
 )
-
 from core.test_helpers import create_test_interactive_user
 
 

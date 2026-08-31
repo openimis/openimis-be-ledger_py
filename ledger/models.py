@@ -2,6 +2,7 @@ from core import fields
 from core import models as core_models
 from django.db import models
 import logging
+from django.utils import timezone as django_tz
 from hordak.models import Account, Leg, Transaction
 from hordak.defaults import (
     DECIMAL_PLACES,
@@ -89,6 +90,8 @@ class AccountingPeriod(core_models.HistoryModel):
 
     closing_transaction = models.ForeignKey(
         Transaction,
+        # Preserve historical audit records by not cascading deletions;
+        # use DO_NOTHING to retain the foreign key value even if the referenced row is removed.
         models.DO_NOTHING,
         db_column='ClosingTransactionID',
         null=True,
@@ -138,6 +141,8 @@ class LedgerJournal(core_models.HistoryModel):
     name = models.CharField(db_column='Name', max_length=100, blank=True, null=True, unique=True)
     code = models.CharField(db_column='Code', max_length=50, blank=True, null=True, unique=True)
     type = models.CharField(db_column='Type', max_length=50, blank=True, null=True)
+    # Preserve historical audit records by not cascading deletions;
+    # use DO_NOTHING to retain the foreign key value even if the referenced row is removed.
     sequence_id = models.ForeignKey(Sequence, models.DO_NOTHING, db_column='SequenceID', related_name="sequencies")
     default_credit_account_id = models.ForeignKey(
         Account, models.DO_NOTHING, db_column='DefaultCreditAccountId', related_name="defaultcreditaccounts")
@@ -187,6 +192,8 @@ class AnalyticValue(core_models.HistoryModel):
         (PARTY_PAYMENT_POINT_MANAGER, "Payment Point Manager"),
     )
 
+    # Preserve historical audit records by not cascading deletions;
+    # use DO_NOTHING to retain the foreign key value even if the referenced row is removed.
     axis = models.ForeignKey(
         AnalyticAxis,
         models.DO_NOTHING,
@@ -238,6 +245,8 @@ class AnalyticValue(core_models.HistoryModel):
 
 class LegTag(core_models.HistoryModel):
 
+    # Preserve historical audit records by not cascading deletions;
+    # use DO_NOTHING to retain the foreign key value even if the referenced row is removed.
     leg = models.ForeignKey(
         Leg,
         models.DO_NOTHING,
@@ -312,6 +321,8 @@ class LedgerEntryMeta(core_models.HistoryModel):
         ("correction", "Correction"),
     )
 
+    # Preserve historical audit records by not cascading deletions;
+    # use DO_NOTHING to retain the foreign key value even if the referenced row is removed.
     transaction = models.OneToOneField(
         Transaction,
         models.DO_NOTHING,
@@ -392,6 +403,8 @@ class DeploymentConfiguration(core_models.HistoryModel):
         max_length=10,
     )
 
+    # Preserve historical audit records by not cascading deletions;
+    # use DO_NOTHING to retain the foreign key value even if the referenced row is removed.
     retained_earnings_account = models.ForeignKey(
         Account,
         models.DO_NOTHING,
@@ -429,6 +442,8 @@ class UnmappedFinancialEvent(core_models.HistoryModel):
 
 
 class PartyLedgerBalance(core_models.HistoryModel):
+    # Preserve historical audit records by not cascading deletions;
+    # use DO_NOTHING to retain the foreign key value even if the referenced row is removed.
     accounting_period = models.ForeignKey(
         AccountingPeriod,
         models.DO_NOTHING,
@@ -477,6 +492,8 @@ class PartyLedgerBalance(core_models.HistoryModel):
 
 class AccountBalanceSnapshot(core_models.HistoryModel):
 
+    # Preserve historical audit records by not cascading deletions;
+    # use DO_NOTHING to retain the foreign key value even if the referenced row is removed.
     accounting_period = models.ForeignKey(
         AccountingPeriod,
         models.DO_NOTHING,
@@ -519,3 +536,106 @@ class AccountBalanceSnapshot(core_models.HistoryModel):
                 name="uniq_account_snapshot"
             )
         ]
+
+
+class ExternalReplicationRecord(core_models.HistoryModel):
+
+    STATUS_PENDING = "pending"
+    STATUS_SUCCEEDED = "succeeded"
+    STATUS_REJECTED = "rejected"
+    STATUS_UNCONFIRMED = "unconfirmed"
+
+    STATUS_CHOICES = [
+        (STATUS_PENDING, STATUS_PENDING),
+        (STATUS_SUCCEEDED, STATUS_SUCCEEDED),
+        (STATUS_REJECTED, STATUS_REJECTED),
+        (STATUS_UNCONFIRMED, STATUS_UNCONFIRMED),
+    ]
+
+    TARGET_ODOO = "odoo"
+    TARGET_SAGE = "sage"
+
+    TARGET_CHOICES = [
+        (TARGET_ODOO, TARGET_ODOO),
+        (TARGET_SAGE, TARGET_SAGE),
+    ]
+
+    # Preserve historical audit records by not cascading deletions;
+    # use DO_NOTHING to retain the foreign key value even if the referenced row is removed.
+    ledger_entry = models.ForeignKey(
+        LedgerEntryMeta,
+        on_delete=models.DO_NOTHING,
+        related_name="replication_records",
+    )
+
+    target_system = models.CharField(
+        max_length=20,
+        choices=TARGET_CHOICES,
+    )
+
+    idempotency_key = models.CharField(
+        max_length=255,
+        unique=True,
+    )
+
+    status = models.CharField(
+        max_length=20,
+        choices=STATUS_CHOICES,
+        default=STATUS_PENDING,
+    )
+
+    external_reference = models.CharField(
+        max_length=255,
+        null=True,
+        blank=True,
+    )
+
+    rejection_reason = models.TextField(
+        null=True,
+        blank=True,
+    )
+
+    attempt_count = models.IntegerField(default=0)
+
+    last_attempted_at = models.DateTimeField(
+        null=True,
+        blank=True,
+    )
+
+    class Meta:
+        db_table = "tblExternalReplicationRecord"
+
+
+class ManualReviewQueueItem(core_models.HistoryModel):
+
+    # Preserve historical audit records by not cascading deletions;
+    # use DO_NOTHING to retain the foreign key value even if the referenced row is removed.
+    replication_record = models.OneToOneField(
+        ExternalReplicationRecord,
+        on_delete=models.DO_NOTHING,
+        related_name="review_item",
+    )
+
+    created_at = models.DateTimeField(
+        default=django_tz.now
+    )
+
+    resolved_at = models.DateTimeField(
+        null=True,
+        blank=True,
+    )
+
+    resolved_by_transaction = models.ForeignKey(
+        Transaction,
+        null=True,
+        blank=True,
+        on_delete=models.DO_NOTHING,
+    )
+
+    resolution_note = models.TextField(
+        null=True,
+        blank=True,
+    )
+
+    class Meta:
+        db_table = "tblManualReviewQueueItem"

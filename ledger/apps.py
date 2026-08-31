@@ -8,6 +8,7 @@ DEFAULT_CFG = {
     "gql_query_ledger_perms": ["131000"],
     "gql_mutation_post_entry_perms": ["131001"],
     "gql_mutation_manage_periods_perms": ["131002"],
+    "gql_mutation_ledger_admin_perms": ["131003"],
 }
 
 CALCULATION_RULES = []
@@ -34,6 +35,7 @@ class LedgerConfig(AppConfig):
     gql_query_ledger_perms = []
     gql_mutation_post_entry_perms = []
     gql_mutation_manage_periods_perms = []
+    gql_mutation_ledger_admin_perms = []
 
     def __load_config(self, cfg):
         for field in cfg:

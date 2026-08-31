@@ -5,8 +5,12 @@ from .models import (
     PartyLedgerBalance,
     AccountingPeriod,
     LedgerJournal,
-    AnalyticValue
+    AnalyticValue,
+    ManualReviewQueueItem,
+    ExternalReplicationRecord,
+    DeploymentConfiguration
 )
+from hordak.models import Account
 from core import prefix_filterset, ExtendedConnection
 
 
@@ -97,6 +101,24 @@ class AnalyticValueGQLType(DjangoObjectType):
         connection_class = ExtendedConnection
 
 
+class DeploymentConfigurationGQLType(DjangoObjectType):
+
+    client_mutation_id = graphene.String()
+
+    class Meta:
+        model = DeploymentConfiguration
+        interfaces = (graphene.relay.Node,)
+        filter_fields = {
+            "operating_mode": ["exact"],
+            "external_system": ["exact"],
+            "currency_code": ["exact"],
+            "retained_earnings_account__id": ["exact"],
+            "retained_earnings_account__name": ["exact"],
+            "retained_earnings_account__code": ["exact"]
+        }
+        connection_class = ExtendedConnection
+
+
 class PartyLedgerBalanceGQLType(DjangoObjectType):
 
     client_mutation_id = graphene.String()
@@ -121,3 +143,62 @@ class FunderActivityReportGQLType(graphene.ObjectType):
     debit_amount = graphene.Decimal()
     credit_amount = graphene.Decimal()
     balance_amount = graphene.Decimal()
+
+
+class ReplicationRecordGQLType(DjangoObjectType):
+
+    client_mutation_id = graphene.String()
+
+    class Meta:
+        model = ExternalReplicationRecord
+        interfaces = (graphene.relay.Node,)
+        filter_fields = {
+            "id": ["exact"],
+            "target_system": ["exact"],
+            "idempotency_key": ["exact"],
+            "external_reference": ["exact"],
+            "status": ["exact"],
+            "rejection_reason": ["exact"],
+            **prefix_filterset(
+                "ledger_entry__",
+                LedgerEntryGQLType._meta.filter_fields
+            ),
+        }
+        connection_class = ExtendedConnection
+
+
+class ManualReviewQueueItemGQLType(DjangoObjectType):
+
+    client_mutation_id = graphene.String()
+
+    class Meta:
+        model = ManualReviewQueueItem
+        interfaces = (graphene.relay.Node,)
+        filter_fields = {
+            "resolution_note": ["exact"],
+            "id": ["exact"],
+            "resolved_by_transaction__id": ["exact"],
+            **prefix_filterset(
+                "replication_record__",
+                ReplicationRecordGQLType._meta.filter_fields
+            ),
+        }
+        connection_class = ExtendedConnection
+
+
+class AccountGQLType(DjangoObjectType):
+
+    client_mutation_id = graphene.String()
+
+    class Meta:
+        model = Account
+        interfaces = (graphene.relay.Node,)
+        filter_fields = {
+            "uuid": ["exact"],
+            "parent": ["exact"],
+            "code": ["exact"],
+            "full_code": ["exact"],
+            "type": ["exact"],
+            "is_bank_account": ["exact"]
+        }
+        connection_class = ExtendedConnection

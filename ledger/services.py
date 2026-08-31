@@ -1,8 +1,9 @@
 from django.core.exceptions import ValidationError
+from core.models import User
 from django.db import transaction
-
+from django.utils import timezone
 from core.signals import register_service_signal
-from hordak.models import Transaction, Leg
+from hordak.models import Transaction, Leg, AccountType
 from datetime import datetime as py_datetime
 from ledger.models import (
     AccountingPeriod,
@@ -15,6 +16,9 @@ from ledger.models import (
 )
 from decimal import Decimal
 from djmoney.money import Money
+from ledger.replication.tasks import (
+    replicate_entry
+)
 
 
 class MissingAccountMappingException(Exception):
@@ -27,6 +31,32 @@ class MissingDeploymentConfigurationException(Exception):
 
 class ClosedPeriodException(Exception):
     pass
+
+
+class ManualReviewService:
+    @classmethod
+    def resolve(
+        cls,
+        review_item,
+        correcting_entry,
+        note,
+        user,
+    ):
+        if review_item.resolved_at:
+            raise ValidationError(
+                "Already resolved"
+            )
+        review_item.resolved_at = timezone.now()
+
+        review_item.resolved_by_transaction = (
+            correcting_entry.transaction
+        )
+
+        review_item.resolution_note = note
+
+        review_item.save(
+            username=user.username
+        )
 
 
 class LedgerEntryService:
@@ -255,6 +285,17 @@ class LedgerEntryService:
                     username=username
                 )
 
+            deployment_config = DeploymentConfiguration.objects.filter(is_deleted=False).first()
+
+            mode_replicated = DeploymentConfiguration.OPERATING_MODE_REPLICATED
+            if deployment_config and deployment_config.operating_mode == mode_replicated:
+                transaction.on_commit(
+                    lambda: replicate_entry.delay(
+                        meta.id,
+                        deployment_config.external_system,
+                        username
+                    )
+                )
             return meta
 
 
@@ -360,7 +401,7 @@ class PeriodService:
         if not latest_period:
             return
 
-        if start_date <= latest_period.end_date:
+        if latest_period.end_date and start_date <= latest_period.end_date:
             raise ValidationError(
                 "New accounting period must start after the latest "
                 "existing accounting period"
@@ -391,18 +432,24 @@ class PeriodService:
 
         with transaction.atomic():
 
+            if not user:
+                raise ValidationError(
+                    "Cannot perfom this action without user specified"
+                )
+            core_user = User.objects.filter(id=user.id).first()
+            if not core_user:
+                raise ValidationError(
+                    "No core user found for the specified user"
+                )
             period = AccountingPeriod(
                 start_date=start_date,
                 end_date=end_date,
                 name=name,
                 code=code,
+                audit_user_id=core_user.i_user.id,
                 status=AccountingPeriod.STATUS_OPEN,
             )
 
-            if not user:
-                raise ValidationError(
-                    "Cannot perfom this action without user specified"
-                )
             period.save(username=user.username)
 
             return period
@@ -432,7 +479,12 @@ class PeriodService:
                 raise ValidationError(
                     "Cannot perform this action without user provided"
                 )
-            period.audit_user_id = user._u.id
+            core_user = User.objects.filter(id=user.id).first()
+            if not core_user:
+                raise ValidationError(
+                    "No core user found for the specified user"
+                )
+            period.audit_user_id = core_user.i_user.id
 
             period.save(
                 username=user.username,
@@ -465,7 +517,7 @@ class PeriodService:
             deployment_config.retained_earnings_account
         )
 
-        if retained_earnings_account.type in ["IN", "EX"]:
+        if retained_earnings_account.type in [AccountType.income, AccountType.expense]:
             raise ValidationError(
                 "Retained earnings account must not be an "
                 "Income or Expense account"
@@ -493,12 +545,13 @@ class PeriodService:
 
             cls._validate_earliest_non_closed_period(period)
 
+            types = [AccountType.income, AccountType.expense]
             snapshots = list(
                 AccountBalanceSnapshot.objects
                 .select_related("account")
                 .filter(
                     accounting_period=period,
-                    account__type__in=["IN", "EX"],
+                    account__type__in=types,
                 )
                 .order_by("account_id")
             )
@@ -563,8 +616,13 @@ class PeriodService:
                 raise ValidationError(
                     "Cannot perform this action without user provided"
                 )
-            period.audit_user_id_closed = user._u.id
-            period.closed_by = user._u.id
+            core_user = User.objects.filter(id=user.id).first()
+            if not core_user:
+                raise ValidationError(
+                    "No core user found for the specified user"
+                )
+            period.audit_user_id_closed = core_user.i_user.id
+            period.closed_by = core_user.i_user.id
 
             period.save(
                 username=user.username,
@@ -600,12 +658,16 @@ class PeriodService:
             period.status = AccountingPeriod.STATUS_OPEN
             period.locked_at = None
 
-            if user:
-                if not user:
-                    raise ValidationError(
-                        "Cannot perform this action without user provided"
-                    )
-            period.audit_user_id = user._u.id
+            if not user:
+                raise ValidationError(
+                    "Cannot perform this action without user provided"
+                )
+            core_user = User.objects.filter(id=user.id).first()
+            if not core_user:
+                raise ValidationError(
+                    "No core user found for the specified user"
+                )
+            period.audit_user_id = core_user.i_user.id
 
             period.save(
                 username=user.username,
