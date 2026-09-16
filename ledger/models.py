@@ -12,21 +12,6 @@ from django.core.exceptions import ValidationError
 logger = logging.getLogger(__name__)
 
 
-class Sequence(core_models.HistoryModel):
-    """
-    This is Sequence class it all the fields needed
-    """
-    name = models.CharField(db_column='Name', max_length=100, blank=True, null=True, unique=True)
-    code = models.CharField(db_column='Code', max_length=50, blank=True, null=True, unique=True)
-    prefix = models.CharField(db_column='Prefix', max_length=50, blank=True, null=True)
-    suffix = models.CharField(db_column='Suffix', max_length=50, blank=True, null=True)
-    padding = models.SmallIntegerField(db_column='Padding', blank=True, null=True)
-
-    class Meta:
-        managed = True
-        db_table = 'tblSequence'
-
-
 class AccountingPeriod(core_models.HistoryModel):
     """
     Accounting period lifecycle management
@@ -134,20 +119,49 @@ class AccountingPeriod(core_models.HistoryModel):
         db_table = 'tblAccountingPeriod'
 
 
+class JournalTypes(core_models.HistoryModel):
+    """This is journal class with all its fields"""
+
+    type = models.CharField(
+        db_column='Type', max_length=50, blank=True, null=True, unique=True)
+    alt_language = models.CharField(
+        db_column='AltLanguage', max_length=50, blank=True, null=True, unique=True)
+    code = models.CharField(db_column='Code', max_length=20, blank=True, null=True)
+
+    class Meta:
+        managed = True
+        db_table = 'tblJournalTypes'
+
+
 class LedgerJournal(core_models.HistoryModel):
     """
     This is Journal class it all the fields needed
     """
     name = models.CharField(db_column='Name', max_length=100, blank=True, null=True, unique=True)
     code = models.CharField(db_column='Code', max_length=50, blank=True, null=True, unique=True)
-    type = models.CharField(db_column='Type', max_length=50, blank=True, null=True)
     # Preserve historical audit records by not cascading deletions;
     # use DO_NOTHING to retain the foreign key value even if the referenced row is removed.
-    sequence_id = models.ForeignKey(Sequence, models.DO_NOTHING, db_column='SequenceID', related_name="sequencies")
     default_credit_account_id = models.ForeignKey(
-        Account, models.DO_NOTHING, db_column='DefaultCreditAccountId', related_name="defaultcreditaccounts")
+        Account,
+        models.DO_NOTHING,
+        db_column='DefaultCreditAccountId',
+        related_name="defaultcreditaccounts"
+    )
+
+    type = models.ForeignKey(
+        JournalTypes,
+        models.DO_NOTHING,
+        db_column='Type',
+        related_name="journaltypes",
+        null=True,
+        blank=True
+    )
+
     default_debit_account_id = models.ForeignKey(
-        Account, models.DO_NOTHING, db_column='DefaultDebitAccountId', related_name="defaultdebitaccounts")
+        Account, models.DO_NOTHING,
+        db_column='DefaultDebitAccountId',
+        related_name="defaultdebitaccounts"
+    )
 
     class Meta:
         managed = True

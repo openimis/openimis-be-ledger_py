@@ -5,8 +5,7 @@ from ledger.models import (
     Account,
     AccountingPeriod,
     LedgerEntryMeta,
-    LedgerJournal,
-    Sequence,
+    LedgerJournal
 )
 from core.test_helpers import create_test_interactive_user
 
@@ -30,16 +29,9 @@ class ClosedPeriodLedgerEntryMetaDBTriggerTest(
             name="Expense",
         )
 
-        self.sequence = Sequence(
-            code="GLMETA",
-            name="General Ledger Meta",
-        )
-        self.sequence.save(username=self.user.username)
-
         self.journal = LedgerJournal(
             code="GENERAL_META",
             name="General Journal Meta",
-            sequence_id=self.sequence,
             default_credit_account_id=self.cash_account,
             default_debit_account_id=self.expense_account,
         )

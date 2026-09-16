@@ -11,7 +11,6 @@ from ledger.models import (
     ExternalReplicationRecord,
     ManualReviewQueueItem,
     DeploymentConfiguration,
-    Sequence,
     AccountingPeriod,
     LedgerJournal,
     LedgerEntryMeta
@@ -27,7 +26,8 @@ class PostingSignalsTest(TestCase):
     def setUp(self):
         self.user = create_test_interactive_user()
         self.context = SimpleNamespace(
-            user=self.user
+            user=self.user,
+            headers={"User-Agent": "test"}
         )
 
         self.account = Account.objects.create(
@@ -35,13 +35,6 @@ class PostingSignalsTest(TestCase):
             full_code="4002",
             name="Cash 2"
         )
-
-        # Create sequence
-        self.sequence = Sequence(
-            code="GLMETA",
-            name="General Ledger Meta",
-        )
-        self.sequence.save(username=self.user.username)
 
         # Create accounts
         self.cash_account = Account.objects.create(
@@ -59,7 +52,6 @@ class PostingSignalsTest(TestCase):
         self.journal = LedgerJournal(
             code="GENERAL_META",
             name="General Journal Meta",
-            sequence_id=self.sequence,
             default_credit_account_id=self.cash_account,
             default_debit_account_id=self.expense_account,
         )

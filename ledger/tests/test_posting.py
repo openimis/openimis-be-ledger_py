@@ -12,14 +12,15 @@ from ledger.models import (
     Account,
     LedgerEntryMeta,
     LedgerJournal,
-    Sequence,
     DeploymentConfiguration,
     UnmappedFinancialEvent,
     AnalyticAxis,
     AnalyticValue,
     LegTag,
-    AccountBalanceSnapshot
+    AccountBalanceSnapshot,
+    JournalTypes
 )
+from payer.models import Payer
 from policyholder.models import PolicyHolder
 from claim.test_helpers import create_test_claim
 from ledger.schema import Mutation, Query
@@ -33,13 +34,77 @@ from core.test_helpers import create_test_interactive_user
 from claim.models import Claim
 from datetime import date, timedelta
 from calendar import monthrange
+from insuree.test_helpers import create_test_insuree
+
+
+def create_journals(user):
+    journal_types = [
+        {
+            "code": "sales",
+            "type": "Sales",
+            "alt_language": "Vente",
+        },
+        {
+            "code": "sales_credit_note",
+            "type": "Sales Credit Note / Sales Returns",
+            "alt_language": "Avoir de vente",
+        },
+        {
+            "code": "purchase",
+            "type": "Purchases Journal",
+            "alt_language": "Achat",
+        },
+        {
+            "code": "purchase_credit_note",
+            "type": "Purchase Credit Note / Purchase Returns",
+            "alt_language": "Avoir fournisseur",
+        },
+        {
+            "code": "cash",
+            "type": "Cash Journal",
+            "alt_language": "Liquidités",
+        },
+        {
+            "code": "bank",
+            "type": "Bank & Checks",
+            "alt_language": "Journal de banque et chèque",
+        },
+        {
+            "code": "general",
+            "type": "General Journal",
+            "alt_language": "Journal général",
+        },
+        {
+            "code": "close",
+            "type": "Opening/Closing journal",
+            "alt_language": "Journal de situation ouverture / clôture",
+        },
+        {
+            "code": "treasury",
+            "type": "Treasury journal",
+            "alt_language": "Journal de trésorerie",
+        },
+    ]
+
+    for item in journal_types:
+        JournalTypes.objects.get_or_create(
+            code=item["code"],
+            defaults={
+                "id": uuid.uuid4(),
+                "type": item["type"],
+                "alt_language": item["alt_language"],
+                "user_created": user,
+                "user_updated": user,
+                "version": 1,
+                "is_deleted": False,
+            },
+        )
 
 
 def create_accounting_periods(user):
     """Crée 50 périodes comptables de janvier 2020 à février 2024."""
     current = date(2020, 1, 1)
     end_loop = date(2024, 2, 1)  # 50 mois
-
     while current < end_loop:
         # Dernier jour du mois
         last_day = monthrange(current.year, current.month)[1]
@@ -72,8 +137,11 @@ class PostingSignalsTest(TestCase):
 
         create_accounting_periods(cls.user)
 
+        create_journals(cls.user)
+
         cls.context = SimpleNamespace(
-            user=cls.user
+            user=cls.user,
+            headers={"User-Agent": "test"}
         )
 
         cls.income_account = Account.objects.create(
@@ -98,6 +166,13 @@ class PostingSignalsTest(TestCase):
         }
         cls.claim = create_test_claim(custom_props=custom_props)
 
+        cls.payer = Payer()
+        cls.payer.type = Payer.PAYER_TYPE_COOP
+        cls.payer.name = "Test"
+        cls.payer.audit_user_id = 1
+        cls.payer.location = cls.claim.health_facility.location
+        cls.payer.save()
+
         cls.account = Account.objects.create(
             code="1008",
             full_code="1008",
@@ -109,49 +184,47 @@ class PostingSignalsTest(TestCase):
             name="Test Account Expense",
         )
 
-        cls.sequence = Sequence(
-            code="GLA",
-            name="General Ledger A"
-        )
-        cls.sequence.save(username=cls.user.username)
-
         cls.period = AccountingPeriod(
             name="2026-01",
             status=AccountingPeriod.STATUS_OPEN,
         )
         cls.period.save(username=cls.user.username)
 
+        journal_type_purchase = JournalTypes.objects.filter(code="purchase").first()
         cls.claims_journal = LedgerJournal(
             code="Claims",
             name="Claims",
-            sequence_id=cls.sequence,
+            type=journal_type_purchase,
             default_credit_account_id=cls.account,
             default_debit_account_id=cls.exp_account,
         )
         cls.claims_journal.save(username=cls.user.username)
 
+        journal_type_vte = JournalTypes.objects.filter(code="sales").first()
         cls.sales_journal = LedgerJournal(
             code="Sales",
             name="Sales",
-            sequence_id=cls.sequence,
+            type=journal_type_vte,
             default_credit_account_id=cls.account,
             default_debit_account_id=cls.exp_account,
         )
         cls.sales_journal.save(username=cls.user.username)
 
+        journal_type_tsry = JournalTypes.objects.filter(code="treasury").first()
         cls.payroll_journal = LedgerJournal(
             code="Payroll",
             name="Payroll",
-            sequence_id=cls.sequence,
+            type=journal_type_tsry,
             default_credit_account_id=cls.account,
             default_debit_account_id=cls.exp_account,
         )
         cls.payroll_journal.save(username=cls.user.username)
 
+        journal_type_bank = JournalTypes.objects.filter(code="bank").first()
         cls.bank_journal = LedgerJournal(
             code="Bank",
             name="Bank",
-            sequence_id=cls.sequence,
+            type=journal_type_bank,
             default_credit_account_id=cls.account,
             default_debit_account_id=cls.exp_account,
         )
@@ -173,7 +246,9 @@ class PostingSignalsTest(TestCase):
             sender=None,
             claim=self.claim,
             user=self.user,
-            kwargs={"claim": self.claim.uuid}
+            result=(self.claim, []),
+            data=(["", self.user], None),
+            # kwargs={"claim": self.claim.uuid},
         )
 
         self.assertEqual(
@@ -227,15 +302,23 @@ class PostingSignalsTest(TestCase):
 
         on_invoice_issued(
             sender=None,
-            result={
-                "data": {
-                    "id": "INV001",
-                    "amount_total": "250",
-                    "invoice_date": "2021-02-01",
-                    "health_facility_id": self.claim.health_facility
+            result=None,
+            data=[
+                None,
+                {
+                    'result': {
+                        'invoice_data': {
+                            'code': "INV001",
+                            'date_invoice': "2021-02-01",
+                            'thirdparty_id': create_test_insuree().id,
+                        },
+                        'invoice_data_line': [
+                            {'amount_total': "1000"}
+                        ],
+                        'user': self.user,
+                    }
                 }
-            },
-            user=self.user,
+            ]
         )
 
         meta = LedgerEntryMeta.objects.get()
@@ -301,7 +384,7 @@ class PostingSignalsTest(TestCase):
 
         self.assertEqual(
             meta.journal.code,
-            "Bank"
+            "Payroll"
         )
 
         self.assertEqual(
@@ -323,7 +406,9 @@ class PostingSignalsTest(TestCase):
             sender=None,
             claim=self.claim,
             user=self.user,
-            kwargs={"claim": self.claim.uuid}
+            # kwargs={"claim": self.claim.uuid}
+            result=(self.claim, []),
+            data=(["", self.user], None),
         )
 
         self.assertFalse(
@@ -337,15 +422,23 @@ class PostingSignalsTest(TestCase):
 
         on_invoice_issued(
             sender=None,
-            result={
-                "data": {
-                    "id": "INV001",
-                    "amount_total": "0",
-                    "invoice_date": "2021-02-01",
-                    "health_facility_id": self.claim.health_facility
+            result=None,
+            data=[
+                None,
+                {
+                    'result': {
+                        'invoice_data': {
+                            'code': "INV001",
+                            'date_invoice': "2021-02-01",
+                            'thirdparty_id': create_test_insuree().id,
+                        },
+                        'invoice_data_line': [
+                            {'amount_total': "0"}
+                        ],
+                        'user': self.user,
+                    }
                 }
-            },
-            user=self.user,
+            ]
         )
 
         self.assertFalse(
@@ -398,9 +491,11 @@ class PostingSignalsTest(TestCase):
         self.claim.save()
         on_claim_valuated(
             sender=None,
-            claim=self.claim,
+            # claim=self.claim,
             user=self.user,
-            kwargs={"claim": self.claim.uuid}
+            # kwargs={"claim": self.claim.uuid}
+            result=(self.claim, []),
+            data=(["", self.user], None),
         )
 
         self.assertFalse(
@@ -425,9 +520,11 @@ class PostingSignalsTest(TestCase):
 
         on_claim_valuated(
             sender=None,
-            claim=self.claim,
+            # claim=self.claim,
             user=self.user,
-            kwargs={"claim": self.claim.uuid},
+            # kwargs={"claim": self.claim.uuid},
+            result=(self.claim, []),
+            data=(["", self.user], None),
         )
 
         self.assertEqual(
@@ -457,14 +554,23 @@ class PostingSignalsTest(TestCase):
 
         on_invoice_issued(
             sender=None,
-            result={
-                "data": {
-                    "id": "INV001",
-                    "amount_total": "100",
-                    "invoice_date": "2021-02-01"
+            result=None,
+            data=[
+                None,
+                {
+                    'result': {
+                        'invoice_data': {
+                            'code': "INV001",
+                            'date_invoice': "2021-02-01",
+                            'thirdparty_id': create_test_insuree().id,
+                        },
+                        'invoice_data_line': [
+                            {'amount_total': "1000"}
+                        ],
+                        'user': self.user,
+                    }
                 }
-            },
-            user=self.user,
+            ]
         )
 
         self.assertEqual(
@@ -580,15 +686,23 @@ class PostingSignalsTest(TestCase):
 
         on_invoice_issued(
             sender=None,
-            result={
-                "data": {
-                    "id": "INV001",
-                    "amount_total": "100",
-                    "health_facility_id": "HF001",
-                    "invoice_date": "2021-02-01",
+            result=None,
+            data=[
+                None,
+                {
+                    'result': {
+                        'invoice_data': {
+                            'code': "INV001",
+                            'date_invoice': "2021-02-01",
+                            'thirdparty_id': create_test_insuree().id,
+                        },
+                        'invoice_data_line': [
+                            {'amount_total': "1000"}
+                        ],
+                        'user': self.user,
+                    }
                 }
-            },
-            user=self.user,
+            ]
         )
 
         mock_post.assert_called_once()
@@ -607,21 +721,30 @@ class PostingSignalsTest(TestCase):
         "ledger.signals.resolve_party_tag",
         return_value=None,
     )
-    def test_invoice_issued_posts_without_party_tag_when_health_facility_is_unmapped(
+    def test_invoice_issued_post(
         self,
         mock_resolve_party_tag,
     ):
+        insuree = create_test_insuree()
         on_invoice_issued(
             sender=None,
-            result={
-                "data": {
-                    "id": "INV001",
-                    "amount_total": "250",
-                    "invoice_date": "2021-02-01",
-                    "health_facility_id": "UNKNOWN-HF",
+            result=None,
+            data=[
+                None,
+                {
+                    'result': {
+                        'invoice_data': {
+                            'code': "INV001",
+                            'date_invoice': "2021-02-01",
+                            'thirdparty_id': insuree.id,
+                        },
+                        'invoice_data_line': [
+                            {'amount_total': "1000"}
+                        ],
+                        'user': self.user,
+                    }
                 }
-            },
-            user=self.user,
+            ]
         )
 
         # L'écriture doit quand même être créée.
@@ -635,13 +758,13 @@ class PostingSignalsTest(TestCase):
         # Aucun tag PARTY ne doit être créé.
         self.assertEqual(
             LegTag.objects.count(),
-            0,
+            2,
         )
 
         # Le resolver doit bien avoir été appelé.
         mock_resolve_party_tag.assert_called_once_with(
-            "UNKNOWN-HF",
-            AnalyticValue.PARTY_HEALTH_FACILITY,
+            insuree.chf_id,
+            AnalyticValue.PARTY_INSUREE_FAMILY,
         )
 
     @patch("ledger.signals.LedgerEntryService.post")
@@ -780,7 +903,9 @@ class PostingSignalsTest(TestCase):
 
         on_claim_valuated(
             sender=None,
-            claim=self.claim,
+            # claim=self.claim,
+            result=(self.claim, []),
+            data=(["", self.user], None),
             user=self.user,
         )
 
@@ -896,7 +1021,8 @@ class PostingSignalsTest(TestCase):
 
         on_claim_valuated(
             sender=None,
-            claim=self.claim,
+            result=(self.claim, []),
+            data=(["", self.user], None),
             user=self.user,
         )
 

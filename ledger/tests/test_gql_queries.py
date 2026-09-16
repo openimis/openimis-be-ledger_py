@@ -721,7 +721,8 @@ class PartyLedgerBalanceQueryTest(TestCase):
         self.balance.save(username=self.user.username)
 
         self.context = SimpleNamespace(
-            user=self.user
+            user=self.user,
+            headers={"User-Agent": "test"}
         )
 
     def test_returns_all_balances(self):
@@ -764,7 +765,8 @@ class AnalyticValueQueryTest(TestCase):
         self.user = create_test_interactive_user()
 
         self.context = SimpleNamespace(
-            user=self.user
+            user=self.user,
+            headers={"User-Agent": "test"}
         )
 
         self.axis = AnalyticAxis(
@@ -827,7 +829,8 @@ class AccountingPeriodQueryTest(TestCase):
         self.period.save(username=self.user.username)
 
         self.context = SimpleNamespace(
-            user=self.user
+            user=self.user,
+            headers={"User-Agent": "test"}
         )
 
     def test_queryset_contains_period(self):

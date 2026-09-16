@@ -12,7 +12,6 @@ from ledger.models import (
     AnalyticValue,
     Account,
     LedgerJournal,
-    Sequence,
     DeploymentConfiguration
 )
 
@@ -28,6 +27,7 @@ class LedgerEntriesFilterTest(TestCase):
 
         self.context = SimpleNamespace(
             user=self.user,
+            headers={"User-Agent": "test"}
         )
 
         self.period = AccountingPeriod(
@@ -36,14 +36,6 @@ class LedgerEntriesFilterTest(TestCase):
             status=AccountingPeriod.STATUS_OPEN,
         )
         self.period.save(
-            username=self.user.username,
-        )
-
-        self.sequence = Sequence(
-            code="GL",
-            name="GL",
-        )
-        self.sequence.save(
             username=self.user.username,
         )
 
@@ -62,7 +54,6 @@ class LedgerEntriesFilterTest(TestCase):
         self.journal = LedgerJournal(
             code="TEST",
             name="TEST",
-            sequence_id=self.sequence,
             default_debit_account_id=self.account_1,
             default_credit_account_id=self.account_2,
         )

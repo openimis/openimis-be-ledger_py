@@ -285,10 +285,8 @@ class LedgerEntryService:
                     username=username
                 )
 
-            deployment_config = DeploymentConfiguration.objects.filter(is_deleted=False).first()
-
             mode_replicated = DeploymentConfiguration.OPERATING_MODE_REPLICATED
-            if deployment_config and deployment_config.operating_mode == mode_replicated:
+            if deployment_config.operating_mode == mode_replicated:
                 transaction.on_commit(
                     lambda: replicate_entry.delay(
                         meta.id,

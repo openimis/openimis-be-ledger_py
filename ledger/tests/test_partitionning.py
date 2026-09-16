@@ -11,8 +11,7 @@ from djmoney.money import Money
 from ledger.models import (
     AccountingPeriod,
     LedgerEntryMeta,
-    LedgerJournal,
-    Sequence
+    LedgerJournal
 )
 from core.test_helpers import create_test_interactive_user
 
@@ -21,12 +20,6 @@ class BalanceTriggerTest(TestCase):
 
     def setUp(self):
         self.test_user = create_test_interactive_user()
-
-        self.sequence = Sequence(
-            code="GL",
-            name="General Ledger"
-        )
-        self.sequence.save(username=self.test_user.username)
 
         self.cash_account = Account.objects.create(
             code="1006",
@@ -49,7 +42,6 @@ class BalanceTriggerTest(TestCase):
         self.journal = LedgerJournal(
             code="GENERAL",
             name="General Journal",
-            sequence_id=self.sequence,
             default_credit_account_id=self.cash_account,
             default_debit_account_id=self.expense_account,
         )

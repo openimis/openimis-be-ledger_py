@@ -11,11 +11,13 @@ from .gql_queries import (
     PartyLedgerBalanceGQLType,
     FunderActivityReportGQLType,
     LedgerEntryGQLType,
+    LedgerJournalGQLType,
     AnalyticValueGQLType,
     AccountingPeriodGQLType,
     ManualReviewQueueItemGQLType,
     DeploymentConfigurationGQLType,
-    AccountGQLType
+    AccountGQLType,
+    JournalTypeGQLType
 )
 from .gql_mutations import (
     CreateDeploymentConfigurationMutation,
@@ -24,7 +26,9 @@ from .gql_mutations import (
     CloseAccountingPeriodMutation,
     ReopenAccountingPeriodMutation,
     CreateAccountMutation,
-    ManualReviewItemMutation
+    ManualReviewItemMutation,
+    CreateJournalMutation,
+    CreateJournalTypeMutation
 )
 from .models import (
     LegTag,
@@ -71,6 +75,14 @@ class Query(graphene.ObjectType):
         LedgerEntryGQLType,
         party=graphene.UUID(),
         funder=graphene.UUID(),
+    )
+
+    ledger_journal = OrderedDjangoFilterConnectionField(
+        LedgerJournalGQLType
+    )
+
+    journal_types = OrderedDjangoFilterConnectionField(
+        JournalTypeGQLType
     )
 
     funder_activity_report = graphene.Field(
@@ -195,3 +207,5 @@ class Mutation(graphene.ObjectType):
     reopen_accounting_period = ReopenAccountingPeriodMutation.Field()
     create_account = CreateAccountMutation.Field()
     resolve_manual_review = ManualReviewItemMutation.Field()
+    create_journal = CreateJournalMutation.Field()
+    create_journal_type = CreateJournalTypeMutation.Field()

@@ -11,7 +11,6 @@ from ledger.models import (
     AccountingPeriod,
     Account,
     LedgerJournal,
-    Sequence,
     LegTag,
     AnalyticValue,
     AnalyticAxis,
@@ -47,12 +46,6 @@ class LedgerEntryServiceTests(TestCase):
             name="Expense Account",
         )
 
-        self.sequence = Sequence(
-            code="GL",
-            name="General Ledger"
-        )
-        self.sequence.save(username=self.test_user.username)
-
         self.analytic_axis = AnalyticAxis(
             code="party",
             name="Party1"
@@ -87,7 +80,6 @@ class LedgerEntryServiceTests(TestCase):
         self.journal = LedgerJournal(
             code="GENERAL",
             name="General Journal",
-            sequence_id=self.sequence,
             default_credit_account_id=self.cash_account,
             default_debit_account_id=self.expense_account,
         )
@@ -283,12 +275,6 @@ class LedgerEntryServiceTest(TestCase):
 
         self.test_user = create_test_interactive_user()
 
-        self.sequence = Sequence(
-            code="GL2",
-            name="General Ledger2"
-        )
-        self.sequence.save(username=self.test_user.username)
-
         self.cash_account = Account.objects.create(
             code="2003",
             full_code="2003",
@@ -304,7 +290,6 @@ class LedgerEntryServiceTest(TestCase):
         self.journal = LedgerJournal(
             code="GENERAL1",
             name="General Journal1",
-            sequence_id=self.sequence,
             default_credit_account_id=self.cash_account,
             default_debit_account_id=self.expense_account,
         )
@@ -359,16 +344,9 @@ class LedgerEntryServiceAdditionalTests(TestCase):
             name="Expense",
         )
 
-        self.sequence = Sequence(
-            code="GL-ADD",
-            name="General Ledger Additional",
-        )
-        self.sequence.save(username=self.user.username)
-
         self.journal = LedgerJournal(
             code="GENERAL-ADD",
             name="General Additional",
-            sequence_id=self.sequence,
             default_credit_account_id=self.cash_account,
             default_debit_account_id=self.expense_account,
         )

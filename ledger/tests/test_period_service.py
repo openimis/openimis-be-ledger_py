@@ -12,7 +12,6 @@ from ledger.models import (
     AccountingPeriod,
     Account,
     LedgerJournal,
-    Sequence,
     DeploymentConfiguration,
     AccountBalanceSnapshot,
 )
@@ -48,16 +47,9 @@ class PeriodServiceTest(TestCase):
             type="EX",
         )
 
-        self.sequence = Sequence(
-            code="PERIOD",
-            name="Period Sequence",
-        )
-        self.sequence.save(username=self.user.username)
-
         self.journal = LedgerJournal(
             code="GENERAL",
             name="General Journal",
-            sequence_id=self.sequence,
             default_credit_account_id=self.cash_account,
             default_debit_account_id=self.expense_account,
         )

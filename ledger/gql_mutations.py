@@ -9,7 +9,9 @@ from .models import (
     DeploymentConfiguration,
     AccountingPeriod,
     ManualReviewQueueItem,
-    ExternalReplicationRecord
+    ExternalReplicationRecord,
+    JournalTypes,
+    LedgerJournal
 )
 from .services import PeriodService
 from datetime import datetime, timezone
@@ -28,6 +30,15 @@ class CreateDeploymentConfigurationInputType(OpenIMISMutation.Input):
     retained_earnings_account_id = graphene.UUID(required=True)
 
 
+class CreateJournalTypeInputType(OpenIMISMutation.Input):
+
+    code = graphene.String(required=True)
+
+    type = graphene.String(required=True)
+
+    alt_language = graphene.String(required=True)
+
+
 class CreateAccountInputType(OpenIMISMutation.Input):
 
     name = graphene.String(required=True)
@@ -43,6 +54,19 @@ class CreateAccountInputType(OpenIMISMutation.Input):
     is_bank_account = graphene.Boolean(required=True)
 
     currencies = graphene.JSONString(required=False)
+
+
+class CreateJournalInputType(OpenIMISMutation.Input):
+
+    name = graphene.String(required=True)
+
+    code = graphene.String(required=True)
+
+    type = graphene.UUID(required=True)
+
+    default_credit_account_id = graphene.UUID(required=True)
+
+    default_debit_account_id = graphene.UUID(required=True)
 
 
 class ManualReviewMutationInputType(OpenIMISMutation.Input):
@@ -122,7 +146,7 @@ class CreateDeploymentConfigurationMutation(OpenIMISMutation):
             account = Account.objects.get(uuid=data["retained_earnings_account_id"])
         except Account.DoesNotExist:
             raise ValidationError(
-                _("The specified account was not found")
+                _("The specified retained earnings account account was not found")
             )
 
         if account.type in [AccountType.expense, AccountType.income]:
@@ -156,6 +180,111 @@ class CreateDeploymentConfigurationMutation(OpenIMISMutation):
             retained_earnings_account=account
         )
         deployment_config.save(username=user.username)
+
+
+class CreateJournalMutation(OpenIMISMutation):
+
+    _mutation_module = "ledger"
+
+    _mutation_class = "CreateJournalMutation"
+    _model = Account
+
+    class Input(CreateJournalInputType):
+        pass
+
+    @classmethod
+    def async_mutate(cls, user, **data):
+
+        if type(user) is AnonymousUser or not user:
+            raise ValidationError(
+                _("mutation.authentication_required")
+            )
+        if not user.has_perms(LedgerConfig.gql_mutation_ledger_admin_perms):
+            raise PermissionDenied(_("unauthorized"))
+
+        name = data.get("name", None)
+        code = data.get("code", None)
+        journal_id = data.get("type", None)
+        default_credit_account_id = data.get("default_credit_account_id", None)
+        default_debit_account_id = data.get("default_debit_account_id", None)
+
+        if "client_mutation_id" in data:
+            data.pop("client_mutation_id")
+        if "client_mutation_label" in data:
+            data.pop("client_mutation_label")
+
+        journal_type = None
+        if journal_id:
+            try:
+                journal_type = JournalTypes.objects.get(id=journal_id)
+            except JournalTypes.DoesNotExist:
+                raise ValidationError(
+                    _("The specified journal type was not found")
+                )
+
+        default_credit_account = None
+        if default_credit_account_id:
+            try:
+                default_credit_account = Account.objects.get(uuid=default_credit_account_id)
+            except Account.DoesNotExist:
+                raise ValidationError(
+                    _("The specified default credit account was not found")
+                )
+
+        default_debit_account = None
+        if default_debit_account_id:
+            try:
+                default_debit_account = Account.objects.get(uuid=default_debit_account_id)
+            except Account.DoesNotExist:
+                raise ValidationError(
+                    _("The specified default debit account was not found")
+                )
+
+        journal = LedgerJournal(
+            code=code,
+            name=name,
+            type=journal_type,
+            default_credit_account_id=default_credit_account,
+            default_debit_account_id=default_debit_account
+        )
+        journal.save(username=user.username)
+
+
+class CreateJournalTypeMutation(OpenIMISMutation):
+
+    _mutation_module = "ledger"
+
+    _mutation_class = "CreateJournalTypeMutation"
+    _model = JournalTypes
+
+    class Input(CreateJournalTypeInputType):
+        pass
+
+    @classmethod
+    def async_mutate(cls, user, **data):
+
+        if type(user) is AnonymousUser or not user:
+            raise ValidationError(
+                _("mutation.authentication_required")
+            )
+        if not user.has_perms(LedgerConfig.gql_mutation_ledger_admin_perms):
+            raise PermissionDenied(_("unauthorized"))
+
+        code = data.get("code", None)
+        j_type = data.get("type", None)
+        alt_language = data.get("alt_language", None)
+
+        if "client_mutation_id" in data:
+            data.pop("client_mutation_id")
+        if "client_mutation_label" in data:
+            data.pop("client_mutation_label")
+
+        sequence = JournalTypes(
+            code=code,
+            type=j_type,
+            alt_language=alt_language
+        )
+        sequence.save(username=user.username)
 
 
 class CreateAccountMutation(OpenIMISMutation):

@@ -8,7 +8,6 @@ from ledger.models import (
     LegTag,
     AccountingPeriod,
     LedgerJournal,
-    Sequence,
     DeploymentConfiguration
 )
 from ledger.models import Account
@@ -193,12 +192,6 @@ class LedgerJournalModelTest(TestCase):
 
         self.test_user = create_test_interactive_user()
 
-        self.sequence = Sequence(
-            code="PS",
-            name="Purchase seq"
-        )
-        self.sequence.save(username=self.test_user.username)
-
         self.cash_account = Account.objects.create(
             code="2003",
             full_code="2003",
@@ -215,7 +208,6 @@ class LedgerJournalModelTest(TestCase):
         journal1 = LedgerJournal(
             code="PURCHASE",
             name="Purchase Journal",
-            sequence_id=self.sequence,
             default_credit_account_id=self.cash_account,
             default_debit_account_id=self.expense_account,
         )
@@ -225,7 +217,6 @@ class LedgerJournalModelTest(TestCase):
     def test_str_returns_name_when_code_missing(self):
         journal = LedgerJournal(
             name="Purchase Journal 2",
-            sequence_id=self.sequence,
             default_credit_account_id=self.cash_account,
             default_debit_account_id=self.expense_account,
         )

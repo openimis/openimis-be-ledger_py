@@ -11,16 +11,13 @@ This module handles accounting journal entries, periods, analytic tagging, and d
 
 ## Models
 
-### Sequence
-Generates sequential numbers for journal entries. It defines a prefix, suffix, and zero‑padding for the sequence value.
-
 
 ### AccountingPeriod
 Lifecycle management for accounting periods (open → locked → closed).
 
 
 ### LedgerJournal
-Defines a journal with a sequence and default debit/credit accounts.
+Defines a journal with default debit/credit accounts.
 
 ### AnalyticAxis
 Categorises analytic entries (party or funder).
