@@ -75,6 +75,7 @@ class LedgerJournalGQLType(DjangoObjectType):
         filter_fields = {
             "name": ["exact"],
             "code": ["exact"],
+            "is_deleted": ["exact"],
             **prefix_filterset(
                 "type__",
                 JournalTypeGQLType._meta.filter_fields

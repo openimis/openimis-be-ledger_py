@@ -140,7 +140,7 @@ class PostingTaggingTest(TestCase):
 
         on_claim_valuated(
             sender=None,
-            result=(self.claim, []),
+            result=self.claim,
             data=(["", self.user], None),
             user=self.user,
         )
@@ -257,7 +257,7 @@ class PostingTaggingTest(TestCase):
 
         on_claim_valuated(
             sender=None,
-            result=(self.claim, []),
+            result=self.claim,
             data=(["", self.user], None),
             user=self.user,
         )

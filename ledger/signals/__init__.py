@@ -131,12 +131,10 @@ def on_claim_valuated(
     sender,
     **kwargs,
 ):
-    claim, errors = kwargs['result']
+    claim = kwargs['result']
     if not isinstance(claim, Claim):
         logger.info("set_claim_processed_or_valuated method has not returned a claim instance")
         return None
-    if errors:
-        logger.info("Cannot process due to errors on claim processing")
 
     user = kwargs.get('data', ([], None))[0][1]
     if claim.status != Claim.STATUS_VALUATED:
@@ -158,9 +156,9 @@ def on_claim_valuated(
     )
 
     payload = {
-        "claim_id": str(claim.id) if claim else None,
-        "claim_code": claim.code if claim else None,
-        "username": user.username if user else None,
+        "claim_id": str(claim.id) if claim else "N/A",
+        "claim_code": claim.code if claim else "N/A",
+        "username": user.username if user else "N/A",
     }
 
     if not mapping:
@@ -307,9 +305,9 @@ def on_invoice_issued(
     insuree_id = invoice['invoice_data']['thirdparty_id']
     user = invoice['user']
     payload = {
-        "invoice_code": invoice_code,
-        "insuree_id": insuree_id,
-        "date_invoice": date_invoice,
+        "invoice_code": str(invoice_code),
+        "insuree_id": (insuree_id),
+        "date_invoice": str(date_invoice),
         "user": user.username
     }
 
@@ -534,10 +532,10 @@ def on_invoice_paid(
     amount = input_data["amount_received"]
     date_payment = input_data["date_payment"]
     payload = {
-        "payment_invoice": payment_invoice.id,
-        "status": status,
-        "invoice_uuid": invoice_uuid,
-        "paymentInvoiceId": payment_invoice.id,
+        "payment_invoice": str(payment_invoice.id),
+        "status": str(status),
+        "invoice_uuid": str(invoice_uuid),
+        "paymentInvoiceId": str(payment_invoice.id),
         "user": user.username
     }
 
@@ -545,7 +543,7 @@ def on_invoice_paid(
         "Financial event received",
         extra={
             "event_type": "invoice_paid",
-            "invoice_uuid": invoice_uuid
+            "invoice_uuid": str(invoice_uuid)
         }
     )
 

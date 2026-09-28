@@ -246,7 +246,7 @@ class PostingSignalsTest(TestCase):
             sender=None,
             claim=self.claim,
             user=self.user,
-            result=(self.claim, []),
+            result=self.claim,
             data=(["", self.user], None),
             # kwargs={"claim": self.claim.uuid},
         )
@@ -407,7 +407,7 @@ class PostingSignalsTest(TestCase):
             claim=self.claim,
             user=self.user,
             # kwargs={"claim": self.claim.uuid}
-            result=(self.claim, []),
+            result=self.claim,
             data=(["", self.user], None),
         )
 
@@ -494,7 +494,7 @@ class PostingSignalsTest(TestCase):
             # claim=self.claim,
             user=self.user,
             # kwargs={"claim": self.claim.uuid}
-            result=(self.claim, []),
+            result=self.claim,
             data=(["", self.user], None),
         )
 
@@ -523,7 +523,7 @@ class PostingSignalsTest(TestCase):
             # claim=self.claim,
             user=self.user,
             # kwargs={"claim": self.claim.uuid},
-            result=(self.claim, []),
+            result=self.claim,
             data=(["", self.user], None),
         )
 
@@ -904,7 +904,7 @@ class PostingSignalsTest(TestCase):
         on_claim_valuated(
             sender=None,
             # claim=self.claim,
-            result=(self.claim, []),
+            result=self.claim,
             data=(["", self.user], None),
             user=self.user,
         )
@@ -1021,7 +1021,7 @@ class PostingSignalsTest(TestCase):
 
         on_claim_valuated(
             sender=None,
-            result=(self.claim, []),
+            result=self.claim,
             data=(["", self.user], None),
             user=self.user,
         )
@@ -1081,7 +1081,7 @@ class PostingSignalsTest(TestCase):
             funder_leg_ids,
         )
 
-    def test_acccount_creation(self):
+    def test_acccount_creation_update_and_delete(self):
 
         core.async_mutations = False
         mutation = """
@@ -1099,7 +1099,6 @@ class PostingSignalsTest(TestCase):
                 "clientMutationLabel": "Créer un compte",
                 "name": "Cash Account",
                 "code": "1000",
-                "fullCode": "1000",
                 "type": "AS",
                 "isBankAccount": False
             }
@@ -1121,6 +1120,76 @@ class PostingSignalsTest(TestCase):
 
         assert account.name == "Cash Account"
         assert account.type == AccountType.asset
+
+        mutation = """
+            mutation UpdateAccount($input: UpdateAccountMutationInput!) {
+                updateAccount(input: $input) {
+                    clientMutationId
+                    internalId
+                }
+            }
+        """
+
+        variables = {
+            "input": {
+                "clientMutationId": "cf18e62f-5f29-4158-bec8-042b9b935728",
+                "clientMutationLabel": "Modifier un compte",
+                "name": "Cash Account Updated",
+                "code": "1000",
+                "type": "AS",
+                "accountUuid": str(Account.objects.get(code="1000").uuid),
+                "isBankAccount": False
+            }
+        }
+
+        schema = graphene.Schema(
+            query=Query,
+            mutation=Mutation,
+        )
+
+        result = schema.execute(
+            mutation,
+            variable_values=variables,
+            context_value=self.context
+        )
+
+        assert result.errors is None
+        account = Account.objects.get(code="1000")
+
+        assert account.name == "Cash Account Updated"
+        assert account.type == AccountType.asset
+
+        mutation = """
+            mutation DeleteAccount($input: DeleteAccountMutationInput!) {
+                deleteAccount(input: $input) {
+                    clientMutationId
+                    internalId
+                }
+            }
+        """
+
+        variables = {
+            "input": {
+                "clientMutationId": "ce98e62f-5f29-4158-bec8-042b9b934444",
+                "clientMutationLabel": "Supprimer un compte",
+                "accountUuid": str(account.uuid)
+            }
+        }
+
+        schema = graphene.Schema(
+            query=Query,
+            mutation=Mutation,
+        )
+
+        result = schema.execute(
+            mutation,
+            variable_values=variables,
+            context_value=self.context
+        )
+
+        assert result.errors is None
+        account = Account.objects.filter(code="1000")
+        assert not account
 
     def test_periods_mutation(self):
         core.async_mutations = False
@@ -1256,3 +1325,213 @@ class PostingSignalsTest(TestCase):
         assert result.errors is None
         closed_period = AccountingPeriod.objects.get(code="2019-01")
         assert closed_period.status == AccountingPeriod.STATUS_CLOSED
+
+        # Delete Account
+        mutation = """
+            mutation OpenAccountingPeriod($input: OpenAccountingPeriodMutationInput!) {
+                openAccountingPeriod(input: $input) {
+                    clientMutationId
+                }
+            }
+        """
+
+        variables = {
+            "input": {
+                "startDate": "1999-01-01",
+                "endDate": "1999-01-31",
+                "name": "Janvier 1999",
+                "code": "1999-01"
+            }
+        }
+
+        schema = graphene.Schema(
+            query=Query,
+            mutation=Mutation,
+        )
+
+        result = schema.execute(
+            mutation,
+            variable_values=variables,
+            context_value=self.context
+        )
+
+        assert result.errors is None
+        period = AccountingPeriod.objects.get(code="1999-01")
+
+        mutation = """
+            mutation DeleteAccountingPeriod($input: DeleteAccountingPeriodMutationInput!) {
+                deleteAccountingPeriod(input: $input) {
+                    clientMutationId
+                }
+            }
+        """
+
+        variables = {
+            "input": {
+                "id": str(period.id)
+            }
+        }
+
+        schema = graphene.Schema(
+            query=Query,
+            mutation=Mutation,
+        )
+
+        result = schema.execute(
+            mutation,
+            variable_values=variables,
+            context_value=self.context
+        )
+        assert result.errors is None
+        closed_period = AccountingPeriod.objects.get(code="1999-01")
+        assert closed_period.is_deleted is True
+
+    def test_journal_creation_update_and_delete(self):
+        core.async_mutations = False
+        mutation = """
+            mutation CreateJournal($input: CreateJournalMutationInput!) {
+                createJournal(input: $input) {
+                    clientMutationId
+                    internalId
+                }
+            }
+        """
+        type_general = JournalTypes.objects.filter(code="general").first()
+        credit_account = Account.objects.create(
+            code="420",
+            name="Cash",
+        )
+        debit_account = Account.objects.create(
+            code="500",
+            name="Bank",
+        )
+
+        variables = {
+            "input": {
+                "clientMutationId": "cf19e62f-5f29-4158-bec8-042b9b935729",
+                "clientMutationLabel": "Créer un journal",
+                "name": "Journal test",
+                "code": "test",
+                "type": str(type_general.id),
+                "defaultCreditAccountId": str(credit_account.uuid),
+                "defaultDebitAccountId": str(debit_account.uuid)
+            }
+        }
+
+        schema = graphene.Schema(
+            query=Query,
+            mutation=Mutation,
+        )
+
+        result = schema.execute(
+            mutation,
+            variable_values=variables,
+            context_value=self.context
+        )
+
+        assert result.errors is None
+        journal = LedgerJournal.objects.get(code="test")
+        assert journal is not None
+
+        mutation = """
+            mutation UpdateJournal($input: UpdateJournalMutationInput!) {
+                updateJournal(input: $input) {
+                    clientMutationId
+                    internalId
+                }
+            }
+        """
+
+        variables = {
+            "input": {
+                "clientMutationId": "cf11e62f-5f29-4158-bec8-042b9b935721",
+                "clientMutationLabel": "Modifier un journal",
+                "name": "Journal test updated",
+                "code": "test",
+                "journalUuid": str(journal.id),
+                "type": str(type_general.id),
+                "defaultCreditAccountId": str(credit_account.uuid),
+                "defaultDebitAccountId": str(debit_account.uuid)
+            }
+        }
+
+        schema = graphene.Schema(
+            query=Query,
+            mutation=Mutation,
+        )
+
+        result = schema.execute(
+            mutation,
+            variable_values=variables,
+            context_value=self.context
+        )
+
+        assert result.errors is None
+        journal = LedgerJournal.objects.get(code="test")
+        assert journal.name == "Journal test updated"
+
+        mutation = """
+            mutation DeleteJournal($input: DeleteJournalMutationInput!) {
+                deleteJournal(input: $input) {
+                    clientMutationId
+                    internalId
+                }
+            }
+        """
+
+        variables = {
+            "input": {
+                "clientMutationId": "cf11e62f-5f29-4158-bec8-042b9b931720",
+                "clientMutationLabel": "Supprimer un journal",
+                "journalUuid": str(journal.id),
+            }
+        }
+
+        schema = graphene.Schema(
+            query=Query,
+            mutation=Mutation,
+        )
+
+        result = schema.execute(
+            mutation,
+            variable_values=variables,
+            context_value=self.context
+        )
+        journal = LedgerJournal.objects.get(code="test")
+        assert journal.is_deleted is True
+
+    def test_journaltype_creation(self):
+        core.async_mutations = False
+        mutation = """
+            mutation CreateJournalType($input: CreateJournalTypeMutationInput!) {
+                createJournalType(input: $input) {
+                    clientMutationId
+                    internalId
+                }
+            }
+        """
+
+        variables = {
+            "input": {
+                "clientMutationId": "cf19e62f-5f29-4158-bec8-042b9b935729",
+                "clientMutationLabel": "Créer un type de journal",
+                "code": "test",
+                "type": "test",
+                "altLanguage": "test"
+            }
+        }
+
+        schema = graphene.Schema(
+            query=Query,
+            mutation=Mutation,
+        )
+
+        result = schema.execute(
+            mutation,
+            variable_values=variables,
+            context_value=self.context
+        )
+
+        assert result.errors is None
+        journal_type = JournalTypes.objects.get(code="test")
+        assert journal_type is not None
